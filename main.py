@@ -280,8 +280,19 @@ def webhook():
         if (checkUser(userId)):
             bonus(userId)
             return jsonify({
-                'fulfillmentText':
-                'Đặt bàn của bạn đã được xác nhận. Cảm ơn bạn!'
+                'fulfillmentMessages': [{
+                    'text': {
+                        'text':
+                        ['Đặt bàn của bạn đã được xác nhận. Cảm ơn bạn!']
+                    }
+                }, {
+                    'platform': 'TELEGRAM',
+                    'quickReplies': {
+                        'title':
+                        'Đặt bàn của bạn đã được xác nhận. Cảm ơn bạn!',
+                        'quickReplies': ['Xem menu', 'Thông tin khách hàng']
+                    }
+                }]
             })
         else:
             return generate_followup_response_lite('NhapThongTinKhachHang')
@@ -320,7 +331,7 @@ def webhook():
             return jsonify({'fulfillmentText': response_text})
         else:
             return jsonify(
-                {'fulfillmentText': 'Không tìm thấy thông tin khách hàng.'})
+                {'fulfillmentText': 'Chưa ghi nhận thông tin khách hàng'})
 
     if intent == 'NhapThongTinKhachHang':
         context_params = req['queryResult']['outputContexts'][0]['parameters']

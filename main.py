@@ -157,6 +157,51 @@ def getInfo(request_data, field):
     return original_request.get(field, '')
 
 
+def checkUser(user_id):
+    with open(CSV_FILE_DATA_PATH, mode='r', newline='',
+              encoding='utf-8-sig') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if row and row[0] == user_id:
+                return True
+    return False
+
+
+def bonus(user_id):
+    updated = False
+    temp_file = 'temp_customer_data.csv'  # Temporary file for writing updated data
+
+    with open(CSV_FILE_DATA_PATH, mode='r', newline='', encoding='utf-8-sig') as infile, \
+         open(temp_file, mode='w', newline='', encoding='utf-8-sig') as outfile:
+
+        reader = csv.reader(infile)
+        writer = csv.writer(outfile)
+
+        for row in reader:
+            if row and row[0] == user_id:
+                try:
+                    new_value = int(
+                        row[5]) + 1  # Incrementing the 6th column (index 5)
+                    row[5] = str(new_value)  # Updating the value in the list
+                    updated = True
+                except ValueError:
+                    continue  # Skip if the value is not an integer
+
+            writer.writerow(row)  # Write the row to the temporary file
+
+    if updated:
+        # Replace the original file with the updated file
+        import os
+        os.remove(CSV_FILE_DATA_PATH)
+        os.rename(temp_file, CSV_FILE_DATA_PATH)
+        return True
+    else:
+        # If no update was made, remove the temporary file
+        import os
+        os.remove(temp_file)
+        return False
+
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     req = request.get_json(silent=True, force=True)
@@ -225,17 +270,21 @@ def webhook():
         booktime_dt = datetime.fromisoformat(booktime)
         booktime_rounded = formatTime(booktime_dt)
 
+        userId = getUserId(req)
+
         with open(CSV_FILE_PATH, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(
-                [coso, songuoi, bookdate, booktime_rounded,
-                 getUserId(req)])
+                [coso, songuoi, bookdate, booktime_rounded, userId])
 
-        # return jsonify({
-        #     'fulfillmentText':
-        #     'Đặt bàn của bạn đã được xác nhận. Cảm ơn bạn!'
-        # })
-        return generate_followup_response_lite('NhapThongTinKhachHang')
+        if (checkUser(userId)):
+            bonus(userId)
+            return jsonify({
+                'fulfillmentText':
+                'Đặt bàn của bạn đã được xác nhận. Cảm ơn bạn!'
+            })
+        else:
+            return generate_followup_response_lite('NhapThongTinKhachHang')
 
     if intent == 'NhapLaiThoiGian' or intent == 'NhapLaiThoiGian2':
         context_params = req['queryResult']['outputContexts'][0]['parameters']
@@ -247,20 +296,44 @@ def webhook():
                                        session)
 
     if intent == 'ThongTinKhachHang':
-        response_text = f"Thông tin khách hàng của bạn: Tên: {getInfo(req, 'username')}, ID: {getUserId(req)}"
+        user_id = getUserId(req)
+        response_text = ""
+        found = False
 
-        return jsonify({'fulfillmentText': response_text})
+        with open(CSV_FILE_DATA_PATH,
+                  mode='r',
+                  newline='',
+                  encoding='utf-8-sig') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                if row[0] == user_id:
+                    response_text += f"Thông tin khách hàng của bạn: \n"
+                    response_text += f"ID: {row[0]}\n"
+                    response_text += f"Tên: {row[2]}\n"
+                    response_text += f"Số điện thoại: {row[3]}\n"
+                    response_text += f"Email: {row[4]}\n"
+                    response_text += f"Tích điểm: {row[5]}\n"
+                    response_text += "--------------------\n"
+                    found = True
+
+        if found:
+            return jsonify({'fulfillmentText': response_text})
+        else:
+            return jsonify(
+                {'fulfillmentText': 'Không tìm thấy thông tin khách hàng.'})
 
     if intent == 'NhapThongTinKhachHang':
         context_params = req['queryResult']['outputContexts'][0]['parameters']
         phone = context_params['phone']
+        email = context_params['email']
 
         with open(CSV_FILE_DATA_PATH, mode='a', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([
                 getUserId(req),
                 getInfo(req, 'username'),
-                getInfo(req, 'first_name') + getInfo(req, 'last_name'), phone
+                getInfo(req, 'first_name') + getInfo(req, 'last_name'), phone,
+                email, 0
             ])
 
         return jsonify({
